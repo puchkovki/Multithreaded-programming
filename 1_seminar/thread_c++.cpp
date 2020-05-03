@@ -5,7 +5,7 @@
 
 void Func(int num) {
     std::stringstream out; 
-    out << "Number = " << num << "; id = " << std::this_thread::get_id() << "\n";
+    out << "Thread's number is " << num << " with id = " << std::this_thread::get_id() << "\n";
     std::cout << out.str();
 }
 

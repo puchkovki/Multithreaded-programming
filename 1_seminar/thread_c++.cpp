@@ -6,6 +6,7 @@
 void Func(int num) {
     std::stringstream out; 
     out << "Thread's number is " << num << " with id = " << std::this_thread::get_id() << "\n";
+    // Для устранения конкуренции между потоками выводим через дополнительный буфер
     std::cout << out.str();
 }
 

@@ -10,12 +10,7 @@ struct input {
 };
 
 void Parallel_push_front(input in)  {
-	//in.list.push_front(in.row);
-
-	in.list.push_back(in.row);
-}
-
-void Parallel_push_back(input in)  {
+	in.list.push_front(in.row);
 	in.list.push_back(in.row);
 }
 
@@ -49,9 +44,6 @@ int main(int argc, char** argv)
 	}
 	size_t n_threads = 1;
 	n_threads = atoll(argv[1]);
-	// std::vector< std::string > song;
-    // Node< std::string > node("Will not let you go. ");
-    // List< std::string > list(&node);
 	
 	std::vector<std::thread> threads;
 	for(size_t i = 0; i < n_threads; i++) {

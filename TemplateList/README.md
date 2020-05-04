@@ -1,0 +1,1 @@
+make --always-make -s ARGS="$1"

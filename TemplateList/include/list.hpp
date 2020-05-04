@@ -14,7 +14,7 @@
 template< typename T>
 struct ListNode {
 		T data;
-		ListNode< T >* next;
+		std::atomic< ListNode< T >* > next;
 
 		// Default constructor
 		ListNode(): data{}, next(nullptr)
@@ -22,10 +22,6 @@ struct ListNode {
 		// Constructor by the element
 		ListNode(const T& value): data(value), next(nullptr)
 		{}
-
-		/*ListNode operator*() const {
-			return data;
-		}*/
 	};
 
 template< typename T>
@@ -80,43 +76,51 @@ class List {
 			return Iterator(head_);
 		};
 		Iterator end() {
-			return ++Iterator(tail_);
+			return Iterator(tail_);
 		};
 		Iterator cbegin() const{
 			return Iterator(head_);
 		};
 		Iterator cend() {
-			return ++Iterator(tail_);
+			return Iterator(tail_);
 		};
 
 		// Default constructor
 		List(size_t n_threads = 1, size_t n_hazard_ptr = 1) :
-				head_(nullptr), tail_(nullptr), size_(0),
+				head_(nullptr),  tail_(nullptr), size_(0),
 				n_threads_(n_threads), n_hazard_ptr_(n_hazard_ptr) {
-			// std::cout << "List counstructed;\n" << std::endl;
+			head_ = new Node(T());
+			last_ = head_;
+			tail_ = new Node(T());
+			last_->next = tail_;
 		}
 
 		// Fill constructor
-		List(size_t n, const T& val = T(), size_t n_threads = 1, size_t n_hazard_ptr = 1) :
-				head_(nullptr), tail_(nullptr), size_(n), n_threads_(1),
-				n_hazard_ptr_(1) {
+		List(size_t n, const T& val = T(), size_t n_threads = 1, 
+		size_t n_hazard_ptr = 1) :
+				head_(nullptr), last_(nullptr), tail_(nullptr), size_(n), n_threads_(1), n_hazard_ptr_(1) {			
+			head_ = new Node(val);
+			tail_ = new Node(val);
 			Node* prev = nullptr;
 			for (size_t i = 0; i < n; ++i) {
 				Node* node_ = new Node(val);
 				if (prev != nullptr) {
-					node_->next = prev;
+					prev->next = node_;
+				} else {
+					head_->next.store(node_, std::memory_order_release);
 				}
-				prev = node;
+				prev = node_;
 			}
-			Node* last = new Node;
-			prev->next = last;
+			last_ = prev;
+			prev->next = tail_;
 		}
 
 		// Default destructor
 		~List() {
 			if(head_ != nullptr) {
 				Node* prev = head_;
-				for (Node* _next = head_; _next->next != nullptr; _next = _next->next) {
+				for (Node* _next = head_; _next->next != nullptr;
+				_next = _next->next) {
 					if (prev != _next) {
 						delete(prev);
 					}
@@ -127,7 +131,7 @@ class List {
 
 		// Output all elements
 		void output() {
-			Node* auxiliary = head_.load(std::memory_order_acquire);
+			Node* auxiliary = head_->next.load(std::memory_order_acquire);
 
 			while(auxiliary != nullptr) {
 				std::cout << auxiliary->data << std::endl;
@@ -139,41 +143,40 @@ class List {
 		// Push element the the list's back
 		void push_back(const T& data) {
 			Node* new_node = new Node(data);
+			Node* tail = new Node();
 
-			if(head_ == nullptr) {
-				head_ = new_node;
-				tail_ = new_node;
-			} else {
-				Node* now_tail = tail_.load(std::memory_order_acquire);
-				do {
-					now_tail->next = new_node;
-				} while(!std::atomic_compare_exchange_weak_explicit(&tail_, &now_tail, new_node, std::memory_order_release, std::memory_order_relaxed));			
-			}
+			do {
+				tail = last_->next;
+				new_node->next = tail;
+			} while(!last_->next.compare_exchange_weak(tail,
+			new_node, std::memory_order_relaxed));
+
+			size_++;
 		}
 
 		void push_front(const T& data) {
 			Node* new_node = new Node(data);
+			Node* head = new Node();
 
-			if(head_ == nullptr) {
-				head_ = new_node;
-				tail_ = new_node;
-			} else {
-				Node* now_head = head_.load(std::memory_order_acquire);
+			do {
+				head = head_->next.load(std::memory_order_acquire);
+				new_node->next = head;
+			} while(!head_->next.compare_exchange_weak(head,
+			new_node, std::memory_order_relaxed));
 
-				do {
-					new_node->next = now_head;
-				} while(!std::atomic_compare_exchange_weak_explicit(&head_, &now_head, new_node, std::memory_order_release, std::memory_order_relaxed));
-			}
+			size_++;
 		}
 
-		// TODO pop_front, pop_back;
-
 	private:
-		std::atomic< Node* > head_;
-		std::atomic< Node* > tail_;
+		//Node* first_;
+		Node* head_;
+		// Last node with the element
+		Node* last_;
+		Node* tail_;
+		// Fake node for the iterators
 		
 		// Size of the list
-		size_t size_;
+		std::atomic< size_t > size_;
 		// Number of the concurrent threads
 		size_t n_threads_;
 		// Size of the hazard pointers

@@ -10,7 +10,6 @@ struct input {
 };
 
 void Parallel_push_front(const input in) {
-	//std::cout << in.row << std::endl;
 	in.list->push_front(in.row);
 }
 
@@ -45,6 +44,11 @@ int main(int argc, char** argv)
     
 	if (argc < 2) {
 		std::cout << "Not enough arguments";
+	} else {
+		int size = atoi(argv[1]);
+		if (size < 0){
+			return EXIT_FAILURE;
+		}
 	}
 	size_t n_threads = atoll(argv[1]);
 	
@@ -58,7 +62,7 @@ int main(int argc, char** argv)
 			std::cerr << e.what();
 		}
 	}
-	for (size_t i = 0; i < 2*n_threads; i++) {
+	for (size_t i = 0; i < 2 * n_threads; i++) {
 		threads[i].join();
     }
 	

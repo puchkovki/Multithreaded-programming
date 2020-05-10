@@ -139,34 +139,36 @@ class List {
 			std::cout << std::endl;
 		}
 
-		// Push element the the list's back
+		// Push element the the back of the list
 		void push_back(const T& data) {
 			Node* new_node = new Node(data);
 			// Value checks whether the CAS is successfully done
 			bool is_CAS_done = false;
 
 			while (!is_CAS_done) {
-				// Stores the present tail
+				// Store the present tail
 				new_node->next = last_->next.load(std::memory_order_acquire);
 
 				is_CAS_done = last_->next.compare_exchange_weak(tail_,
 			new_node, std::memory_order_relaxed);
 			}
-			// Moves the last element
+			// Move the last element
 			last_ = new_node;		
 
-			// Incrementes the list's size
-			size_++;
+			// Increment the list's size
+			++size_;
 		}
 
+		// Push element to the top of the list
 		void push_front(const T& data) {
 			Node* new_node = new Node(data);
 			// Value checks whether the CAS is successfully done
 			bool is_CAS_done = false;
 
 			while (!is_CAS_done) {
-				// Stores the present first element
+				// Store the present first element
 				new_node->next = head_->next.load(std::memory_order_acquire);
+
 				// Auxuliary variable for checking has another proccess changed smth
 				Node* head = new_node->next.load(std::memory_order_acquire);
 
@@ -174,21 +176,21 @@ class List {
 			new_node, std::memory_order_relaxed);
 			}
 
-			// Adding to empty list
+			// Add to empty list
 			if (head_ == last_) {
 				last_ = new_node;
 			}
 			
-			size_++;
+			++size_;
 		}
 
 	private:
-		//Node* first_;
+		// Fake node refers to the first element of the list
 		Node* head_;
 		// Last node with the element
 		Node* last_;
+		// Fake node to which refers last element of the list
 		Node* tail_;
-		// Fake node for the iterators
 		
 		// Size of the list
 		std::atomic< size_t > size_;

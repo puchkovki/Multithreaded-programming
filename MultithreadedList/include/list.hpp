@@ -2,9 +2,12 @@
 #define MULTITHREADEDLIST_INCLUDE_LIST_HPP_
 
 #include <atomic>
+#include <algorithm>
 #include <iostream>
+#include <map>
 #include <sstream>
 #include <thread>
+#include <vector>
 
 template< typename T>
 struct ListNode {
@@ -12,11 +15,9 @@ struct ListNode {
         std::atomic< ListNode< T >* > next;
 
         // Default constructor
-        ListNode(): data{}, next(nullptr)
-        {}
+        ListNode(): data{}, next(nullptr) {}
         // Constructor by the element
-        explicit ListNode(const T& value): data(value), next(nullptr)
-        {}
+        explicit ListNode(const T& value): data(value), next(nullptr) {}
     };
 
 template< typename T>
@@ -40,45 +41,45 @@ class List {
         class Iterator {
             private:
                 Node* cur;
+                // For the case we try to get value of tail_
+                Node* iterator_tail;
 
             public:
-                explicit Iterator(Node* node): cur(node)
-                {}
+                // So we cannot call default constructor
+                Iterator() = delete;
+                explicit Iterator(Node* node, Node* tail):
+                    cur(node), iterator_tail(tail) {}
 
                 Iterator operator++() {
                     cur = cur->next;
                     return *this;
                 }
 
-                bool operator==(Iterator other) const {
+                bool operator==(const Iterator& other) const {
                     return cur == other.cur;
                 }
-                bool operator!=(Iterator other) const {
+                bool operator!=(const Iterator& other) const {
                     return !(cur == other.cur);
                 }
 
                 T operator*() const {
-                    return cur->data;
+                    if (cur != iterator_tail) {
+                        return cur->data;
+                    }
                 }
         };
 
-        // typedef Iterator<value_type> iterator;
-        // typedef __list_const_iterator<value_type>       const_iterator;
-        // typedef std::reverse_iterator<iterator> reverse_iterator;
-        // typedef std::reverse_iterator<const_iterator> const_reverse_iterator;
-
-
         Iterator begin() {
-            return Iterator(head_->next);
+            return Iterator(head_->next, tail_);
         }
         Iterator end() {
-            return Iterator(tail_);
+            return Iterator(tail_, tail_);
         }
         Iterator cbegin() const {
-            return Iterator(head_->next);
+            return Iterator(head_->next, tail_);
         }
         Iterator cend() {
-            return Iterator(tail_);
+            return Iterator(tail_, tail_);
         }
 
         // Default constructor
@@ -114,7 +115,8 @@ class List {
 
         // Default destructor
         ~List() {
-            if (head_ != nullptr) {
+            scan_();
+            /*if (head_ != nullptr) {
                 Node* prev = head_;
                 for (Node* _next = head_->next; _next != nullptr;
                         _next = _next->next) {
@@ -122,7 +124,7 @@ class List {
                     prev = _next;
                 }
                 delete(prev);
-            }
+            }*/
         }
 
         // Output all elements
@@ -162,10 +164,13 @@ class List {
             // Value checks whether the CAS is successfully done
             bool is_CAS_done = false;
 
+            std::stringstream s;
+            s << "Adding element " << data << std::endl;
+            std::cout << s.str();
+            s.clear();
             while (!is_CAS_done) {
                 // Store the present first element
                 new_node->next = head_->next.load(std::memory_order_acquire);
-
                 // Auxuliary variable has another proccess intervened
                 Node* head = new_node->next.load(std::memory_order_acquire);
 
@@ -182,43 +187,43 @@ class List {
         }
 
         void pop_front() {
-            /*std::stringstream s;
-            s << std::this_thread::get_id() <<"-st thread started working" << std::endl;
-            std::cout << s.str();
-            s.clear();*/
             // List is empty
             if (head_->next == tail_) {
-                std::cout << "List is empty. We cannot pop it!";
+                std::cout << "List is empty. We cannot pop it!\n";
+                return;
             }
 
             //  Remained only one element
             if (head_->next == last_) {
-                std::cout << "Remains only last element\n";
+                std::cout << "Remains only one element\n";
                 head_->next.compare_exchange_weak(last_, tail_,
                     std::memory_order_relaxed);
                 --size_;
                 return;
             }
-
+            Node* tmp;
             bool done = false;
             while (!done) {
-                Node* tmp = head_->next.load(std::memory_order_relaxed);
+                tmp = head_->next.load(std::memory_order_relaxed);
+                // Node* auxiliary = tmp->next.load(std::memory_order_relaxed);
+                // size_t _data = tmp->data;
                 done = head_->next.compare_exchange_weak(tmp, tmp->next,
                     std::memory_order_relaxed);
-                if (done) {
+                // if (done) {
                     /*std::stringstream s;
                     s << "Deleting element " << tmp->data << std::endl;
                     std::cout << s.str();
                     s.clear();*/
-                    delete tmp;
-                    /*s << "Now first element is " << head_->next.load(std::memory_order_relaxed)->data << std::endl;
+                    // delete(tmp);
+                    /*s << "Now first element is "
+                        << head_->next.load(std::memory_order_relaxed)->data
+                        << std::endl;
                     std::cout << s.str();*/
-                }
+                // }
             }
 
             --size_;
-            /*s << std::this_thread::get_id() <<"-st thread worked well" << std::endl;
-            std::cout << s.str();*/
+            retire_(tmp);
         }
 
     private:
@@ -228,13 +233,64 @@ class List {
         Node* last_;
         // Fake node to which refers last element of the list
         Node* tail_;
-
         // Size of the list
         std::atomic< size_t > size_;
-        // Number of the concurrent threads
+        // Number of the concurrent threads P
         size_t n_threads_;
-        // Size of the hazard pointers
+        // Size of the hazard pointers K
         size_t n_hazard_ptr_;
+        // Vector hazard nodes for each proccess
+        std::map<std::thread::id, std::vector< Node* >> hazard_ptrs_;
+        // Vector nodes we want to delete
+        // массив готовых к удалению данных
+        std::map<std::thread::id, std::vector< Node* >> retired_nodes_;
+
+        // Удаление данных
+        // Помещает данные в map retired_nodes_
+        void retire_(Node* wasted) {
+            // Adding nodes to the vector of those which we want to delete
+            std::thread::id id = std::this_thread::get_id();
+            retired_nodes_[id].push_back(wasted);
+
+            // batch size, R = 2*P*K
+            // Если массив заполнен – вызываем основную функцию Scan
+            if (retired_nodes_[id].size() == 2 * n_threads_ * n_hazard_ptr_) {
+                //std::cout << "Time to delete nodes\n";
+                scan_();
+            }
+        }
+
+        // Основная функция
+        // Удаляет все элементы retired_nodes_, которые не объявлены
+        // как Hazard Pointer
+        void scan_() {
+            // Stage 1 – проходим по всем HP всех потоков
+            // Собираем общий массив plist защищенных указателей
+            std::vector< Node* > common_hazards;
+            for (auto i : hazard_ptrs_) {
+                // Adding hazard nodes of all threads
+                for (auto curr : i.second) {
+                    common_hazards.push_back(curr);
+                }
+            }
+
+            // Stage 2 – сортировка hazard pointer'ов
+            // Сортировка нужна для последующего бинарного поиска
+            std::sort(common_hazards.begin(), common_hazards.end());
+
+            // Stage 3 – удаление элементов, не объявленных как hazard
+            std::thread::id id = std::this_thread::get_id();
+            // Stage 4 – формирование нового массива отложенных элементов
+            std::vector< Node* > updated_retired;
+            for (auto rejected : retired_nodes_[id]) {
+                if (std::binary_search(common_hazards.begin(),
+                        common_hazards.end(), rejected)) {
+                    updated_retired.push_back(rejected);
+                } else {
+                    delete rejected;
+                }
+            }
+        }
 };
 
 #endif  // MULTITHREADEDLIST_INCLUDE_LIST_HPP_

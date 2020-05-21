@@ -1,8 +1,9 @@
+#include "list.hpp"
 #include <iostream>
 #include <string>
 #include <vector>
 #include <thread>
-#include "list.hpp"
+#include <unistd.h>
 
 struct input {
     const size_t row;
@@ -58,23 +59,33 @@ int main(int argc, char** argv) {
     std::vector<std::thread> threads;
     for (size_t i = 0; i < n_threads; i++) {
         input in = {i, &list};
-        try {
-            threads.push_back(std::thread(&Parallel_push_front, in));
-            threads.push_back(std::thread(&Parallel_push_back, in));
-        } catch (const std::exception& e) {
-            std::cerr << e.what();
-        }
+        // try {
+            if (i % 2 == 0) {
+                threads.push_back(std::thread(&Parallel_push_front, in));
+                threads.push_back(std::thread(&Parallel_push_back, in));
+            } else {
+                //sleep(1);
+                threads.push_back(std::thread(&Parallel_pop_front, in));
+            }
+        // } catch (const std::exception& e) {
+        //    std::cerr << e.what();
+        //}
     }
-    for (size_t i = 0; i < 2 * n_threads; i++) {
+    for (size_t i = 0; i < 3 * n_threads / 2; i++) {
         threads[i].join();
     }
 
-    list.output();
+    for (auto i : list) {
+        std::cout << i << " ";
+    }
+    std::cout << std::endl;
+
+    //list.output();
 
     /////////////////////////////////////////////////////////
 
     threads.clear();
-    for (size_t i = 0; i < n_threads; ++i) {
+    /*for (size_t i = 0; i < n_threads; ++i) {
         input in = {i, &list};
         threads.push_back(std::thread(&Parallel_pop_front, in));
     }
@@ -83,6 +94,6 @@ int main(int argc, char** argv) {
         threads[i].join();
     }
 
-    list.output();
+    list.output();*/
     return EXIT_SUCCESS;
 }

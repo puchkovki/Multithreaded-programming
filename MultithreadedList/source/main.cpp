@@ -17,6 +17,10 @@ void Parallel_push_back(input in) {
     in.list->push_back(in.row);
 }
 
+void Parallel_pop_front(input in) {
+    in.list->pop_front();
+}
+
 void fill_the_vector (std::vector< std::string >& song) {
 	song.push_back("(Let him go!) ");
 	song.push_back("Bismillah! No, we will not let you go. ");
@@ -49,7 +53,7 @@ int main(int argc, char** argv) {
             return EXIT_FAILURE;
         }
     }
-    size_t n_threads = atoll(argv[1]);
+    size_t n_threads = std::stoul(argv[1]);
 
     std::vector<std::thread> threads;
     for (size_t i = 0; i < n_threads; i++) {
@@ -67,12 +71,18 @@ int main(int argc, char** argv) {
 
     list.output();
 
-    for (auto i : list) {
-        std::cout << i << " ";
+    /////////////////////////////////////////////////////////
+
+    threads.clear();
+    for (size_t i = 0; i < n_threads; ++i) {
+        input in = {i, &list};
+        threads.push_back(std::thread(&Parallel_pop_front, in));
+    }
+    std::cout << "Every delete goes right!" << std::endl;
+    for (size_t i = 0; i < n_threads; ++i) {
+        threads[i].join();
     }
 
-    std::cout << std::endl;
-
-    /////////////////////////////////////////////////////////
-    return 0;
+    list.output();
+    return EXIT_SUCCESS;
 }

@@ -2,14 +2,9 @@
 #define MULTITHREADEDLIST_INCLUDE_LIST_HPP_
 
 #include <atomic>
-
-#ifndef OSTREAM_
-#define OSTREAM_
-
 #include <iostream>
-
-#endif
-
+#include <sstream>
+#include <thread>
 
 template< typename T>
 struct ListNode {
@@ -184,6 +179,46 @@ class List {
             }
 
             ++size_;
+        }
+
+        void pop_front() {
+            /*std::stringstream s;
+            s << std::this_thread::get_id() <<"-st thread started working" << std::endl;
+            std::cout << s.str();
+            s.clear();*/
+            // List is empty
+            if (head_->next == tail_) {
+                std::cout << "List is empty. We cannot pop it!";
+            }
+
+            //  Remained only one element
+            if (head_->next == last_) {
+                std::cout << "Remains only last element\n";
+                head_->next.compare_exchange_weak(last_, tail_,
+                    std::memory_order_relaxed);
+                --size_;
+                return;
+            }
+
+            bool done = false;
+            while (!done) {
+                Node* tmp = head_->next.load(std::memory_order_relaxed);
+                done = head_->next.compare_exchange_weak(tmp, tmp->next,
+                    std::memory_order_relaxed);
+                if (done) {
+                    /*std::stringstream s;
+                    s << "Deleting element " << tmp->data << std::endl;
+                    std::cout << s.str();
+                    s.clear();*/
+                    delete tmp;
+                    /*s << "Now first element is " << head_->next.load(std::memory_order_relaxed)->data << std::endl;
+                    std::cout << s.str();*/
+                }
+            }
+
+            --size_;
+            /*s << std::this_thread::get_id() <<"-st thread worked well" << std::endl;
+            std::cout << s.str();*/
         }
 
     private:

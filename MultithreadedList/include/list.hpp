@@ -1,6 +1,7 @@
 #ifndef MULTITHREADEDLIST_INCLUDE_LIST_HPP_
 #define MULTITHREADEDLIST_INCLUDE_LIST_HPP_
 
+#include <unistd.h>
 #include <atomic>
 #include <algorithm>
 #include <iostream>
@@ -8,6 +9,7 @@
 #include <sstream>
 #include <thread>
 #include <vector>
+#include <utility>
 
 template< typename T>
 struct ListNode {
@@ -66,6 +68,7 @@ class List {
                     if (cur != iterator_tail) {
                         return cur->data;
                     }
+                    return T();
                 }
         };
 
@@ -83,7 +86,7 @@ class List {
         }
 
         // Default constructor
-        explicit List(size_t n_threads = 1, size_t n_hazard_ptr = 1) :
+        explicit List(size_t n_threads = 1, size_t n_hazard_ptr = 3) :
                 head_(nullptr),  tail_(nullptr), size_(0),
                 n_threads_(n_threads), n_hazard_ptr_(n_hazard_ptr) {
             head_ = new Node(T());
@@ -94,9 +97,9 @@ class List {
 
         // Fill constructor
         List(size_t n, const T& val = T(), size_t n_threads = 1,
-        size_t n_hazard_ptr = 1) :
+        size_t n_hazard_ptr = 3) :
                 head_(nullptr), last_(nullptr), tail_(nullptr), size_(n),
-                n_threads_(1), n_hazard_ptr_(1) {
+                n_threads_(1), n_hazard_ptr_(3) {
             head_ = new Node(val);
             tail_ = new Node(val);
             Node* prev = nullptr;
@@ -115,21 +118,21 @@ class List {
 
         // Default destructor
         ~List() {
-            scan_();
-            /*if (head_ != nullptr) {
+            if (head_ != nullptr) {
                 Node* prev = head_;
                 for (Node* _next = head_->next; _next != nullptr;
                         _next = _next->next) {
-                    delete(prev);
+                    retire_(prev);
                     prev = _next;
                 }
-                delete(prev);
-            }*/
+                retire_(prev);
+            }
+            // scan_();
         }
 
         // Output all elements
         void output() {
-            Node* auxiliary = head_->next.load(std::memory_order_acquire);
+            Node* auxiliary = head_->next.load(std::memory_order_relaxed);
 
             while (auxiliary->next != nullptr) {
                 std::cout << auxiliary->data << std::endl;
@@ -138,12 +141,55 @@ class List {
             std::cout << std::endl;
         }
 
+        void swapYield() {
+            Node* first = head_->next.load(std::memory_order_relaxed);
+            // Adding node to the HP
+            addToHp(first);
+
+            std::stringstream s;
+            s << "Swap " << first->data << " and "
+                << first->next.load(std::memory_order_relaxed) << std::endl;
+            std::cout << s.str();
+            s.clear();
+
+            Node* tmp = first;
+            first = first->next;
+            first->next = tmp;
+            // std::swap(first, first->next);
+            __asm volatile ("pause" ::: "memory");
+            deleteFromHp(first);
+            return;
+        }
+
+        void swapSleep() {
+            Node* first = head_->next.load(std::memory_order_relaxed);
+            // Adding node to the HP
+            addToHp(first);
+
+
+            std::stringstream s;
+            s << "Swap " << first->data << " and "
+                << first->next.load(std::memory_order_relaxed)->data
+                << std::endl;
+            std::cout << s.str(); 
+            s.clear();
+
+            // std::swap(first, first->next);
+            sleep(2);
+            deleteFromHp(first);
+            return;
+        }
+
         // Push element the the back of the list
         void push_back(const T& data) {
             Node* new_node = new Node(data);
             // Value checks whether the CAS is successfully done
             bool is_CAS_done = false;
 
+            std::stringstream s;
+            s << "Push " << data << " to the back" << std::endl;
+            std::cout << s.str();
+            s.clear();
             while (!is_CAS_done) {
                 // Store the present tail
                 new_node->next = last_->next.load(std::memory_order_acquire);
@@ -165,7 +211,7 @@ class List {
             bool is_CAS_done = false;
 
             std::stringstream s;
-            s << "Adding element " << data << std::endl;
+            s << "Push " << data << " at the front" << std::endl;
             std::cout << s.str();
             s.clear();
             while (!is_CAS_done) {
@@ -193,33 +239,21 @@ class List {
                 return;
             }
 
-            //  Remained only one element
-            if (head_->next == last_) {
-                std::cout << "Remains only one element\n";
-                head_->next.compare_exchange_weak(last_, tail_,
-                    std::memory_order_relaxed);
-                --size_;
-                return;
-            }
+            // List is not empty
             Node* tmp;
-            bool done = false;
-            while (!done) {
+            size_t data;
+            bool is_CAS_done = false;
+            while (!is_CAS_done) {
                 tmp = head_->next.load(std::memory_order_relaxed);
-                // Node* auxiliary = tmp->next.load(std::memory_order_relaxed);
-                // size_t _data = tmp->data;
-                done = head_->next.compare_exchange_weak(tmp, tmp->next,
+                data = tmp->data;
+                is_CAS_done = head_->next.compare_exchange_weak(tmp, tmp->next,
                     std::memory_order_relaxed);
-                // if (done) {
-                    /*std::stringstream s;
-                    s << "Deleting element " << tmp->data << std::endl;
+                if (is_CAS_done) {
+                    std::stringstream s;
+                    s << "Pop " << data << std::endl;
                     std::cout << s.str();
-                    s.clear();*/
-                    // delete(tmp);
-                    /*s << "Now first element is "
-                        << head_->next.load(std::memory_order_relaxed)->data
-                        << std::endl;
-                    std::cout << s.str();*/
-                // }
+                    s.clear();
+                }
             }
 
             --size_;
@@ -255,7 +289,7 @@ class List {
             // batch size, R = 2*P*K
             // Если массив заполнен – вызываем основную функцию Scan
             if (retired_nodes_[id].size() == 2 * n_threads_ * n_hazard_ptr_) {
-                //std::cout << "Time to delete nodes\n";
+                // std::cout << "Time to delete nodes\n";
                 scan_();
             }
         }
@@ -290,6 +324,44 @@ class List {
                     delete rejected;
                 }
             }
+
+            retired_nodes_[id] = updated_retired;
+        }
+
+        void addToHp(Node* dangerous) {
+            if (dangerous == nullptr) {
+                std::cout << "Trying to add nullptr to HP\n";
+                return;
+            }
+
+            std::thread::id id = std::this_thread::get_id();
+            if (hazard_ptrs_[id].size() < n_hazard_ptr_) {
+                hazard_ptrs_[id].push_back(dangerous);
+            } else {
+                std::cout << "Hazard pointer stack is too big\n";
+            }
+            return;
+        }
+
+        void deleteFromHp(Node* dangerous) {
+            if (dangerous == nullptr) {
+                std::cout << "Trying to delete nullptr from HP\n";
+                return;
+            }
+
+            std::thread::id id = std::this_thread::get_id();
+            auto it = hazard_ptrs_.find(id);
+            if (it != hazard_ptrs_.end()) {
+                for (auto i : it->second) {
+                    if (i == dangerous) {
+                        hazard_ptrs_[id].erase(std::remove(hazard_ptrs_[id].begin(),
+                            hazard_ptrs_[id].end(), dangerous),
+                            hazard_ptrs_[id].end());
+                    }
+                }
+                hazard_ptrs_[id].push_back(dangerous);
+            }
+            return;
         }
 };
 

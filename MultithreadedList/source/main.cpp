@@ -1,13 +1,13 @@
 #include "list.hpp"
+#include <unistd.h>
 #include <iostream>
 #include <string>
 #include <vector>
 #include <thread>
-#include <unistd.h>
 
 struct input {
     const size_t row;
-    List< std::size_t >* list;
+    List< int >* list;
 };
 
 void Parallel_push_front(const input in) {
@@ -20,6 +20,9 @@ void Parallel_push_back(input in) {
 
 void Parallel_pop_front(input in) {
     in.list->pop_front();
+}
+void Swap(input in) {
+    in.list->swapSleep();
 }
 
 void fill_the_vector (std::vector< std::string >& song) {
@@ -44,7 +47,6 @@ void fill_the_vector (std::vector< std::string >& song) {
 }
 
 int main(int argc, char** argv) {
-    List<size_t> list;
 
     if (argc < 2) {
         std::cout << "Not enough arguments";
@@ -55,23 +57,28 @@ int main(int argc, char** argv) {
         }
     }
     size_t n_threads = std::stoul(argv[1]);
+    List<int> list(n_threads, static_cast<size_t>(3));
 
     std::vector<std::thread> threads;
     for (size_t i = 0; i < n_threads; i++) {
         input in = {i, &list};
-        // try {
-            if (i % 2 == 0) {
-                threads.push_back(std::thread(&Parallel_push_front, in));
-                threads.push_back(std::thread(&Parallel_push_back, in));
-            } else {
-                //sleep(1);
-                threads.push_back(std::thread(&Parallel_pop_front, in));
-            }
-        // } catch (const std::exception& e) {
-        //    std::cerr << e.what();
-        //}
+        try {
+            threads.push_back(std::thread(&Parallel_push_front, in));
+            threads.push_back(std::thread(&Parallel_push_back, in));
+        } catch (const std::exception& e) {
+            std::cerr << e.what();
+        }
     }
-    for (size_t i = 0; i < 3 * n_threads / 2; i++) {
+    sleep(5);
+
+    input in = {0, &list};
+    threads.push_back(std::thread(&Swap, in));
+
+    for (size_t i = 0; i < n_threads; i++) {
+        input in = {i, &list};
+        threads.push_back(std::thread(&Parallel_pop_front, in));
+    }
+    for (size_t i = 0; i < 3 * n_threads + 1; i++) {
         threads[i].join();
     }
 
@@ -85,15 +92,5 @@ int main(int argc, char** argv) {
     /////////////////////////////////////////////////////////
 
     threads.clear();
-    /*for (size_t i = 0; i < n_threads; ++i) {
-        input in = {i, &list};
-        threads.push_back(std::thread(&Parallel_pop_front, in));
-    }
-    std::cout << "Every delete goes right!" << std::endl;
-    for (size_t i = 0; i < n_threads; ++i) {
-        threads[i].join();
-    }
-
-    list.output();*/
     return EXIT_SUCCESS;
 }

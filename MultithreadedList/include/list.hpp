@@ -10,6 +10,7 @@
 #include <thread>
 #include <vector>
 #include <utility>
+#include <mutex>
 
 template< typename T>
 struct ListNode {
@@ -132,7 +133,7 @@ class List {
 
         // Output all elements
         void output() {
-            Node* auxiliary = head_->next.load(std::memory_order_relaxed);
+            Node* auxiliary = head_->next.load(std::memory_order_acquire);
 
             while (auxiliary->next != nullptr) {
                 std::cout << auxiliary->data << std::endl;
@@ -142,15 +143,15 @@ class List {
         }
 
         void swapYield() {
-            Node* first = head_->next.load(std::memory_order_relaxed);
+            Node* first = head_->next.load(std::memory_order_acquire);
             // Adding node to the HP
             addToHp(first);
 
-            std::stringstream s;
+            /* std::stringstream s;
             s << "Swap " << first->data << " and "
                 << first->next.load(std::memory_order_relaxed) << std::endl;
             std::cout << s.str();
-            s.clear();
+            s.clear();*/
 
             Node* tmp = first;
             first = first->next;
@@ -162,19 +163,20 @@ class List {
         }
 
         void swapSleep() {
-            Node* first = head_->next.load(std::memory_order_relaxed);
+            Node* first = head_->next.load(std::memory_order_acquire);
             // Adding node to the HP
             addToHp(first);
 
-
-            std::stringstream s;
+            /* std::stringstream s;
             s << "Swap " << first->data << " and "
                 << first->next.load(std::memory_order_relaxed)->data
                 << std::endl;
-            std::cout << s.str(); 
-            s.clear();
+            std::cout << s.str();
+            s.clear();*/
 
-            // std::swap(first, first->next);
+            Node* tmp = first;
+            first = first->next;
+            first->next = tmp;
             sleep(2);
             deleteFromHp(first);
             return;
@@ -186,10 +188,10 @@ class List {
             // Value checks whether the CAS is successfully done
             bool is_CAS_done = false;
 
-            std::stringstream s;
+            /* std::stringstream s;
             s << "Push " << data << " to the back" << std::endl;
             std::cout << s.str();
-            s.clear();
+            s.clear();*/
             while (!is_CAS_done) {
                 // Store the present tail
                 new_node->next = last_->next.load(std::memory_order_acquire);
@@ -210,10 +212,10 @@ class List {
             // Value checks whether the CAS is successfully done
             bool is_CAS_done = false;
 
-            std::stringstream s;
+            /* std::stringstream s;
             s << "Push " << data << " at the front" << std::endl;
             std::cout << s.str();
-            s.clear();
+            s.clear();*/
             while (!is_CAS_done) {
                 // Store the present first element
                 new_node->next = head_->next.load(std::memory_order_acquire);
@@ -235,29 +237,29 @@ class List {
         void pop_front() {
             // List is empty
             if (head_->next == tail_) {
-                std::cout << "List is empty. We cannot pop it!\n";
+                // std::cout << "List is empty. We cannot pop it!\n";
                 return;
             }
 
             // List is not empty
-            Node* tmp;
-            size_t data;
+            // Node* tmp;
+            // size_t data;
             bool is_CAS_done = false;
             while (!is_CAS_done) {
-                tmp = head_->next.load(std::memory_order_relaxed);
-                data = tmp->data;
+                Node* tmp = head_->next.load(std::memory_order_acquire);
+                // Node* aux = tmp->next.load(std::memory_order_relaxed);
                 is_CAS_done = head_->next.compare_exchange_weak(tmp, tmp->next,
                     std::memory_order_relaxed);
                 if (is_CAS_done) {
-                    std::stringstream s;
+                    /* std::stringstream s;
                     s << "Pop " << data << std::endl;
                     std::cout << s.str();
-                    s.clear();
+                    s.clear();*/
+                    retire_(tmp);
                 }
             }
 
             --size_;
-            retire_(tmp);
         }
 
     private:
@@ -269,6 +271,7 @@ class List {
         Node* tail_;
         // Size of the list
         std::atomic< size_t > size_;
+
         // Number of the concurrent threads P
         size_t n_threads_;
         // Size of the hazard pointers K
@@ -279,16 +282,23 @@ class List {
         // массив готовых к удалению данных
         std::map<std::thread::id, std::vector< Node* >> retired_nodes_;
 
+        std::mutex threadMutex;
+
         // Удаление данных
         // Помещает данные в map retired_nodes_
         void retire_(Node* wasted) {
+            if (wasted == nullptr) {
+                // std::cout << "Trying to delete nullptr" << std::endl;
+                return;
+            }
+            plugThread();
             // Adding nodes to the vector of those which we want to delete
             std::thread::id id = std::this_thread::get_id();
             retired_nodes_[id].push_back(wasted);
 
             // batch size, R = 2*P*K
             // Если массив заполнен – вызываем основную функцию Scan
-            if (retired_nodes_[id].size() == 2 * n_threads_ * n_hazard_ptr_) {
+            if (retired_nodes_[id].size() >= 2 * n_threads_ * n_hazard_ptr_) {
                 // std::cout << "Time to delete nodes\n";
                 scan_();
             }
@@ -298,13 +308,16 @@ class List {
         // Удаляет все элементы retired_nodes_, которые не объявлены
         // как Hazard Pointer
         void scan_() {
+            plugThread();
             // Stage 1 – проходим по всем HP всех потоков
             // Собираем общий массив plist защищенных указателей
             std::vector< Node* > common_hazards;
-            for (auto i : hazard_ptrs_) {
+            for (auto HP : hazard_ptrs_) {
                 // Adding hazard nodes of all threads
-                for (auto curr : i.second) {
-                    common_hazards.push_back(curr);
+                for (auto node : HP.second) {
+                    if (node != nullptr) {
+                        common_hazards.push_back(node);
+                    }
                 }
             }
 
@@ -316,12 +329,15 @@ class List {
             std::thread::id id = std::this_thread::get_id();
             // Stage 4 – формирование нового массива отложенных элементов
             std::vector< Node* > updated_retired;
-            for (auto rejected : retired_nodes_[id]) {
-                if (std::binary_search(common_hazards.begin(),
-                        common_hazards.end(), rejected)) {
-                    updated_retired.push_back(rejected);
-                } else {
-                    delete rejected;
+            auto it = hazard_ptrs_.find(id);
+            if (it != hazard_ptrs_.end()) {
+                for (auto rejected : it->second) {
+                    if (std::binary_search(common_hazards.begin(),
+                            common_hazards.end(), rejected)) {
+                        updated_retired.push_back(rejected);
+                    } else {
+                        delete rejected;
+                    }
                 }
             }
 
@@ -330,22 +346,23 @@ class List {
 
         void addToHp(Node* dangerous) {
             if (dangerous == nullptr) {
-                std::cout << "Trying to add nullptr to HP\n";
+                // std::cout << "Trying to add nullptr to HP\n";
                 return;
             }
 
             std::thread::id id = std::this_thread::get_id();
+            plugThread();
             if (hazard_ptrs_[id].size() < n_hazard_ptr_) {
                 hazard_ptrs_[id].push_back(dangerous);
             } else {
-                std::cout << "Hazard pointer stack is too big\n";
+                // std::cout << "Hazard pointer stack is too big\n";
             }
             return;
         }
 
         void deleteFromHp(Node* dangerous) {
             if (dangerous == nullptr) {
-                std::cout << "Trying to delete nullptr from HP\n";
+                // std::cout << "Trying to delete nullptr from HP\n";
                 return;
             }
 
@@ -354,12 +371,27 @@ class List {
             if (it != hazard_ptrs_.end()) {
                 for (auto i : it->second) {
                     if (i == dangerous) {
-                        hazard_ptrs_[id].erase(std::remove(hazard_ptrs_[id].begin(),
+                        hazard_ptrs_[id].erase(
+                            std::remove(hazard_ptrs_[id].begin(),
                             hazard_ptrs_[id].end(), dangerous),
                             hazard_ptrs_[id].end());
                     }
                 }
                 hazard_ptrs_[id].push_back(dangerous);
+            }
+            return;
+        }
+
+        void plugThread() {
+            std::thread::id id = std::this_thread::get_id();
+            std::lock_guard<std::mutex> guard(threadMutex);
+            if (hazard_ptrs_.find(id) == hazard_ptrs_.end()) {
+                hazard_ptrs_.insert(std::pair<std::thread::id, std::vector< Node* >>
+                    (id, std::vector< Node* >()));
+            }
+            if (retired_nodes_.find(id) == retired_nodes_.end()) {
+                retired_nodes_.insert(std::pair<std::thread::id, std::vector< Node* >>
+                    (id, std::vector< Node* >()));
             }
             return;
         }

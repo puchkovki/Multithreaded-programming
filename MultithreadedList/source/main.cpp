@@ -1,5 +1,6 @@
 #include "list.hpp"
 #include <unistd.h>
+#include <ctime>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -56,41 +57,42 @@ int main(int argc, char** argv) {
             return EXIT_FAILURE;
         }
     }
+
+    unsigned int start_time =  clock();
     size_t n_threads = std::stoul(argv[1]);
     List<int> list(n_threads, static_cast<size_t>(3));
-
     std::vector<std::thread> threads;
     for (size_t i = 0; i < n_threads; i++) {
         input in = {i, &list};
         try {
             threads.push_back(std::thread(&Parallel_push_front, in));
-            threads.push_back(std::thread(&Parallel_push_back, in));
+            // threads.push_back(std::thread(&Parallel_push_back, in));
         } catch (const std::exception& e) {
             std::cerr << e.what();
         }
     }
-    sleep(5);
-
+    /* sleep(5);
     input in = {0, &list};
-    threads.push_back(std::thread(&Swap, in));
+    threads.push_back(std::thread(&Swap, in));*/
 
     for (size_t i = 0; i < n_threads; i++) {
         input in = {i, &list};
         threads.push_back(std::thread(&Parallel_pop_front, in));
     }
-    for (size_t i = 0; i < 3 * n_threads + 1; i++) {
+    unsigned int end_time = clock();
+    for (size_t i = 0; i < 2 * n_threads; i++) {
         threads[i].join();
     }
 
-    for (auto i : list) {
+    /* for (auto i : list) {
         std::cout << i << " ";
     }
     std::cout << std::endl;
-
-    //list.output();
-
-    /////////////////////////////////////////////////////////
+    // list.output();*/
 
     threads.clear();
+    unsigned int time = end_time - start_time;
+
+    std::cout << n_threads <<  " " << time << "ms" << std::endl;
     return EXIT_SUCCESS;
 }

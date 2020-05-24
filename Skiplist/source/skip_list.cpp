@@ -6,8 +6,6 @@
 
 namespace skip_list {
 
-#define MOR std::memory_order_relaxed
-
 unsigned int SEED = time(nullptr);
 
 static inline void __sl_node_init(node* node, size_t top_layer) {
@@ -245,9 +243,8 @@ static inline node* __sl_next(raw* slist, node* cur_node, int layer,
 static inline size_t __sl_decide_top_layer(raw* slist) {
     size_t layer = 0;
     while (layer + 1 < slist->max_layer) {
-        // Flip a coin
         if (rand_r(&SEED) % slist->fanout == 0) {
-            // grow with probability 1/fanout
+            // Flip a coin
             layer++;
         } else {
             // stop with probability (fanout - 1)/fanout
@@ -293,7 +290,7 @@ insert_retry:
     if (top_layer > sl_top_layer) {
         sl_top_layer = top_layer;
     }
-    for (cur_layer = sl_top_layer; cur_layer < sl_top_layer; --cur_layer) {
+    for (cur_layer = sl_top_layer; cur_layer <= sl_top_layer; --cur_layer) {
         do {
             node* next_node = __sl_next(slist, cur_node, cur_layer,
                 nullptr, nullptr);
@@ -384,7 +381,6 @@ insert_retry:
             // Need to change prev/next nodes' prev/next pointers
             // from 0 to top_layer.
             for (layer = 0; layer <= top_layer; ++layer) {
-                // `accessing_next` works as a spin-lock.
                 __sl_write_lock_an(prevs[layer]);
                 node* exp = nexts[layer];
                 if (!prevs[layer]->next[layer].compare_exchange_weak(exp, x)) {
@@ -402,7 +398,7 @@ insert_retry:
             slist->num_entries.fetch_add(1, MOR);
             slist->layer_entries[x->top_layer].fetch_add(1, MOR);
             for (size_t ii = slist->max_layer - 1;
-                    ii < slist->max_layer - 1; --ii) {
+                    ii <= slist->max_layer - 1; --ii) {
                 if (slist->layer_entries[ii] > 0) {
                     slist->top_layer = ii;
                     break;
@@ -446,7 +442,7 @@ find_retry:
     cur_node->ref_count.fetch_add(1, MOR);
 
     uint8_t sl_top_layer = slist->top_layer;
-    for (cur_layer = sl_top_layer; cur_layer < sl_top_layer; --cur_layer) {
+    for (cur_layer = sl_top_layer; cur_layer <= sl_top_layer; --cur_layer) {
         do {
             node* next_node = __sl_next(slist, cur_node, cur_layer,
                 nullptr, nullptr);
@@ -504,8 +500,16 @@ node* skiplist_find(raw* slist, node* query) {
     return __sl_find(slist, query, EQ);
 }
 
+node* skiplist_find_smaller(raw* slist, node* query) {
+    return __sl_find(slist, query, SM);
+}
+
 node* skiplist_find_smaller_or_equal(raw* slist, node* query) {
     return __sl_find(slist, query, SMEQ);
+}
+
+node* skiplist_find_greater(raw* slist, node* query) {
+    return __sl_find(slist, query, GT);
 }
 
 node* skiplist_find_greater_or_equal(raw* slist, node* query) {
@@ -532,7 +536,7 @@ int skiplist_erase_node_passive(raw* slist, node* x) {
         return -2;
     }
 
-     // Removed flag is set first, so reader cannot read this node.
+    // Removed flag is set first, so reader cannot read this node.
     x->removed.store(true, MOR);
 
 erase_node_retry:
@@ -550,7 +554,7 @@ erase_node_retry:
     cur_node->ref_count.fetch_add(1, MOR);
 
     size_t cur_layer = slist->top_layer;
-    for (; cur_layer < slist->top_layer; --cur_layer) {
+    for (; cur_layer <= slist->top_layer; --cur_layer) {
         do {
             bool node_found = false;
             node* next_node = __sl_next(slist, cur_node, cur_layer,
@@ -565,10 +569,10 @@ erase_node_retry:
             // Should find exact position of the `node` unlike the insert()
             cmp = __sl_cmp(slist, x, next_node);
             if (cmp > 0 || (cur_layer <= top_layer && !node_found)) {
-                // if (cur_node < next_node < node) then move to next node.
                 node* temp = cur_node;
                 cur_node = next_node;
                 if (cmp > 0) {
+                    // if (cur_node < next_node < node) then move to next node.
                     int cmp2 = __sl_cmp(slist, cur_node, x);
                     if (cmp2 > 0) {
                         // Otherwise (node < cur_node <= next_node),
@@ -641,7 +645,7 @@ erase_node_retry:
             break;
         } while (cur_node != &slist->tail);
     }
-
+    
     // It is not exist in the skiplist, it should not happen.
     assert(found_node_to_erase);
 
@@ -667,7 +671,7 @@ erase_node_retry:
 
     slist->num_entries.fetch_sub(1, MOR);
     slist->layer_entries[x->top_layer].fetch_sub(1, MOR);
-    for (size_t ii = slist->max_layer - 1; ii < slist->max_layer - 1; --ii) {
+    for (size_t ii = slist->max_layer - 1; ii <= slist->max_layer - 1; --ii) {
         if (slist->layer_entries[ii] > 0) {
             slist->top_layer = ii;
             break;
@@ -679,7 +683,6 @@ erase_node_retry:
     cur_node->ref_count.fetch_sub(1, MOR);
 
     x->being_modified.store(false, MOR);
-
     return 0;
 }
 
@@ -770,7 +773,7 @@ node* skiplist_prev(raw* slist, node* x) {
 }
 
 node* skiplist_begin(raw* slist) {
-    node* next = NULL;
+    node* next = nullptr;
     while (next == nullptr) {
         next = __sl_next(slist, &slist->head, 0, nullptr, nullptr);
     }
@@ -787,10 +790,4 @@ node* skiplist_end(raw* slist) {
 }  // namespace skip_list
 
 // TODO(trmigor): compare_exchange_weak: is MOR needed?
-// TODO(trmigor): int or size_t layers: reverse loops
-// TODO(trmigor): CHECK ALL FUNCTIONS!!!
-// TODO(trmigor): add comments (including source comments)
-// TODO(trmigor): RESOLVE WARNINGS!!!
-// TODO(trmigor): check naming: node <-> x || node(type) <-> node(variable)
-// TODO(trmigor): change naming
-// TODO(trmigor): Create class!!
+// TODO(puchkovki): RESOLVE WARNINGS!!!

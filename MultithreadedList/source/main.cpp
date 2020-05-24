@@ -12,7 +12,8 @@ struct input {
 };
 
 void Parallel_push_front(const input in) {
-    in.list->push_front(in.row);
+    for (int i = 0; i < 10; ++i)
+        in.list->push_front(in.row);
 }
 
 void Parallel_push_back(input in) {
@@ -20,8 +21,22 @@ void Parallel_push_back(input in) {
 }
 
 void Parallel_pop_front(input in) {
-    in.list->pop_front();
+    for (size_t i = 0; i < 5*in.row; ++i) {
+        in.list->pop_front();
+    }
 }
+
+void Parallel_pop(input in) {
+    sleep(1);
+    in.list->pop_front();
+    in.list->pop_front();
+    in.list->pop_front();
+    in.list->pop_front();
+    in.list->pop_front();
+    in.list->pop_front();
+    in.list->push_front(1);
+}
+
 void Swap(input in) {
     in.list->swapSleep();
 }
@@ -58,7 +73,6 @@ int main(int argc, char** argv) {
         }
     }
 
-    unsigned int start_time =  clock();
     size_t n_threads = std::stoul(argv[1]);
     List<int> list(n_threads, static_cast<size_t>(3));
     std::vector<std::thread> threads;
@@ -66,21 +80,22 @@ int main(int argc, char** argv) {
         input in = {i, &list};
         try {
             threads.push_back(std::thread(&Parallel_push_front, in));
-            // threads.push_back(std::thread(&Parallel_push_back, in));
         } catch (const std::exception& e) {
             std::cerr << e.what();
         }
     }
-    /* sleep(5);
-    input in = {0, &list};
-    threads.push_back(std::thread(&Swap, in));*/
-
-    for (size_t i = 0; i < n_threads; i++) {
-        input in = {i, &list};
-        threads.push_back(std::thread(&Parallel_pop_front, in));
+    for (auto i : list) {
+        std::cout << i << " ";
     }
-    unsigned int end_time = clock();
-    for (size_t i = 0; i < 2 * n_threads; i++) {
+    std::cout << std::endl;
+
+    sleep(5);
+    input in = {0, &list};
+    threads.push_back(std::thread(&Swap, in));
+
+    threads.push_back(std::thread(&Parallel_pop, in));
+
+    for (size_t i = 0; i < n_threads + 2; i++) {
         threads[i].join();
     }
 
@@ -88,11 +103,8 @@ int main(int argc, char** argv) {
         std::cout << i << " ";
     }
     std::cout << std::endl;
-    // list.output();*/
+    list.output();*/
 
     threads.clear();
-    unsigned int time = end_time - start_time;
-
-    std::cout << n_threads <<  " " << time << "ms" << std::endl;
     return EXIT_SUCCESS;
 }

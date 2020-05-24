@@ -1,13 +1,15 @@
 # **Parallel programming DATI**
 Parallel programming class for the DCAM MIPT students in Acronis.
 
-## 1_1
+## *First seminar*
+
+### [1_1](./1_1)
 
 Write program receiving input number `N` as an command line argument and making
 `N` threads via `pthreads` or `C+11 threads` library. Each thread must print its
 executable number in order and its ID.
 
-## 1_2
+### [1_2](./1_2)
 
 Write program producing 4 threads, which fill shared buffer with 100 characters 
 `'1'`, `'2'`, `'3'` and `'4'` correspondingly, using `pthreads` or 
@@ -15,7 +17,7 @@ Write program producing 4 threads, which fill shared buffer with 100 characters
 threads read 100 characters from the buffer and put them into 4 different data 
 files.
 
-## 1_3
+### [1_3](./1_3)
 
 Write running program executing `ls` in a child process.
 
@@ -29,10 +31,14 @@ Realisations of different `std::atomic` locks:
    - yield
    - exponential backoff (sleep)
 
-Realization checks on different benchmarks: Phillip's and Vsevolod's.
+Realization checks on different benchmarks: *[Phillip's](./locks_for_Phills_bench)* and *[Vsevolod's](./locks_for_Seva_bench)*.
 
 
-## Matrix
+## *[Matrix](./matrix)*
 
 Realisation of the multithreading block matrix's multiplication. Checked for the 
 cache misses with `vagrind`.
+
+## *[Stack](./MultithreadedList)*
+
+Realisation of the linked list with solution of the multithreaded [ABA problem](https://en.wikipedia.org/wiki/ABA_problem). Checked with [AddressSanitizer](https://github.com/google/sanitizers/wiki/AddressSanitizer).

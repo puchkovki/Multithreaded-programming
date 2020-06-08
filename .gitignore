@@ -1,6 +1,0 @@
-.vscode
-test
-build
-*.o
-*.out
-.gitignore

@@ -36,12 +36,12 @@ and *[Vsevolod's](./locks_for_Seva_bench)*.
 ## **[matrix](matrix/)**
 
 Realisation of the multithreading block matrix's multiplication. Checked for the 
-cache misses with `vagrind`.
+cache misses with `valgrind`.
 
 ## **[Stack](multithreadedList/)**
 
 Realisation of the linked list with solution of the multithreaded [ABA problem](https://en.wikipedia.org/wiki/ABA_problem).
-Checked with [AddressSanitizer](https://github.com/google/sanitizers/wiki/AddressSanitizer).
+Checked with the [AddressSanitizer](https://github.com/google/sanitizers/wiki/AddressSanitizer).
 
 
 ## **[Skiplist](skiplist/)**

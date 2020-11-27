@@ -1,8 +1,6 @@
 # **Parallel programming DATI**
 Parallel programming class for the DCAM MIPT students in Acronis.
 
-## **First seminar**
-
 ## **[pthread_id](pthread_id/)**
 
 Write program receiving input number `N` as an command line argument and making

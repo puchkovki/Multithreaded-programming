@@ -1,5 +1,5 @@
-# **Parallel programming DATI**
-Parallel programming class for the DCAM MIPT students in Acronis.
+# **Multithreaded programming DATI**
+Multithreaded programming class for the DCAM MIPT students in Acronis.
 
 ## **[pthread_id](pthread_id/)**
 

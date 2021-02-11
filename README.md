@@ -40,7 +40,7 @@ cache misses with `valgrind`.
 
 ## **[Stack](multithreadedList/)**
 
-Realisation of the linked list with solution of the multithreaded [ABA problem](https://en.wikipedia.org/wiki/ABA_problem).
+Realisation of the multithreaded linked list with solution of the multithreaded [ABA problem](https://en.wikipedia.org/wiki/ABA_problem).
 Checked with the [AddressSanitizer](https://github.com/google/sanitizers/wiki/AddressSanitizer).
 
 
